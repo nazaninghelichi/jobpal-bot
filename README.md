@@ -14,4 +14,3 @@ JobPal is a Telegram bot designed to help job seekers stay *motivated*, *organiz
 
 No fluff, just consistent progress — one app at a time. 🚀  
 "
-git push
