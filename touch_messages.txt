@@ -1,0 +1,3 @@
+# Messages for Future Reference
+
+- date: 25 April 2025: set goal needs some changes it is not user friendly. if it gets done we can publish the bot. 
