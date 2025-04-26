@@ -1,7 +1,8 @@
 import logging
 import sqlite3
 from datetime import date, time as dtime
-
+from keep_alive import keep_alive
+keep_alive()
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
