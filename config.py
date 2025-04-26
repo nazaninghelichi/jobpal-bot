@@ -1,0 +1,5 @@
+import os
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GIPHY_API_KEY = os.getenv("GIPHY_API_KEY")
