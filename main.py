@@ -3,6 +3,9 @@ import sqlite3
 from datetime import date, time as dtime
 from keep_alive import keep_alive
 keep_alive()
+from dotenv import load_dotenv
+load_dotenv()
+
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
