@@ -6,3 +6,4 @@ certifi==2023.11.17
 aiohttp
 Flask
 python-dotenv
+asyncpg
