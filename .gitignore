@@ -1,3 +1,5 @@
 venv/
 jobpal.db
 config.py
+config.py
+.env
