@@ -180,3 +180,41 @@ def get_logjobs_handler() -> ConversationHandler:
         states={LOGGING: [CallbackQueryHandler(log_button)]},
         fallbacks=[CallbackQueryHandler(log_button, pattern="^cancel$")]
     )
+# =========================================
+# /progress Command
+# =========================================
+
+async def progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    today = datetime.now().date()
+    start_week = today - timedelta(days=today.weekday())
+    week_dates = [(start_week + timedelta(days=i)).isoformat() for i in range(7)]
+    
+    conn = await get_db_connection()
+    lines = []
+    total_goal = total_done = streak = 0
+    on_streak = True
+    
+    for d in week_dates:
+        row = await conn.fetchrow("SELECT goal, done FROM daily_track WHERE user_id=$1 AND date=$2", user_id, d)
+        g, dn = row["goal"], row["done"] if row else (0, 0)
+        total_goal += g
+        total_done += dn
+        if g and dn >= g and on_streak:
+            streak += 1
+        else:
+            on_streak = False
+        bar = "✅" * min(dn, g) + "⬜️" * max(0, g - dn)
+        extra = f" +{dn - g} ✨" if dn > g else ""
+        day_name = datetime.fromisoformat(d).strftime('%A')
+        lines.append(f"{('✅' if dn >= g else '❌')} {day_name}: {bar}{extra} ({dn}/{g})")
+    
+    await conn.close()
+
+    pct = round((total_done / total_goal * 100), 1) if total_goal else 0
+    streak_line = f"\n🔥 Current streak: **{streak}** day(s)!" if streak else ""
+
+    await update.message.reply_text(
+        f"📊 **Weekly Progress**\n" + "\n".join(lines) + f"\n\n**Total:** {total_done}/{total_goal} ({pct}%)" + streak_line,
+        parse_mode="Markdown"
+    )
