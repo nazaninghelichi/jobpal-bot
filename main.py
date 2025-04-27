@@ -16,8 +16,7 @@ from telegram.ext import (
 from goal_command import (
     get_setgoal_handler,
     get_logjobs_handler,
-    progress,
-    init_daily_track_table
+    progress
 )
 from username_command import get_setname_handler
 from leaderboard_command import leaderboard as leaderboard_actual
@@ -32,8 +31,6 @@ def init_db():
     """
     Create all required tables in a single DB call, including migrating schema for reminders.
     """
-    init_daily_track_table()
-
     conn = sqlite3.connect("jobpal.db")
     c = conn.cursor()
     # user_preferences table with reminders_enabled flag
