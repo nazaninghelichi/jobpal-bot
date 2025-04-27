@@ -1,5 +1,7 @@
 import logging
 import sqlite3
+import os
+import asyncpg
 from datetime import date, time as dtime
 from keep_alive import keep_alive
 keep_alive()
@@ -45,7 +47,7 @@ def init_db():
         )
         '''
     )
-    # users meta table with handle + first_name
+    # users meta table
     c.execute(
         '''
         CREATE TABLE IF NOT EXISTS users (
@@ -57,11 +59,18 @@ def init_db():
         )
         '''
     )
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN first_name TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
-
+    # daily tracking table
+    c.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS daily_track (
+            user_id INTEGER,
+            date TEXT,
+            goal INTEGER DEFAULT 0,
+            done INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, date)
+        )
+        '''
+    )
     conn.commit()
     conn.close()
 
@@ -91,8 +100,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "SELECT COALESCE(NULLIF(username, ''), first_name) FROM users WHERE user_id = ?",
         (user_id,)
     )
-    row = c.fetchone()
-    display_name = row[0] if row and row[0] else 'there'
+    display_name = c.fetchone()[0] or 'there'
     conn.close()
 
     conn = sqlite3.connect("jobpal.db")
@@ -127,7 +135,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_kb,
         parse_mode="Markdown"
     )
-    logger.info(f"/start triggered by {display_name} ({user_id})")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -177,6 +184,61 @@ async def progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=HOME_KB
     )
 
+async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query:
+        user_id = update.callback_query.from_user.id
+        await update.callback_query.answer()
+    else:
+        user_id = update.effective_user.id
+
+    conn = sqlite3.connect("jobpal.db")
+    c = conn.cursor()
+    c.execute(
+        "SELECT reminders_enabled FROM user_preferences WHERE user_id = ?",
+        (user_id,)
+    )
+    row = c.fetchone()
+    new_state = 0 if (row and row[0] == 1) else 1
+    c.execute(
+        "INSERT OR REPLACE INTO user_preferences (user_id, reminders_enabled) VALUES (?, ?)",
+        (user_id, new_state)
+    )
+    conn.commit()
+    conn.close()
+
+    status = "ON" if new_state == 1 else "OFF"
+    text = (
+        f"🔔 Reminders are now *{status}*."
+        " I will send you reminders at 09:00, 15:00, and 21:00 daily"
+        " (last at 21:00 because the leaderboard closes at 22:00)."
+    )
+    btn_label = "Turn OFF" if new_state == 1 else "Turn ON"
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]
+    ])
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
+    else:
+        await update.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
+
+async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Connects to Supabase and lists public tables."""
+    try:
+        conn = await asyncpg.connect(os.getenv("DATABASE_URL"))
+        rows = await conn.fetch(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='public';"
+        )
+        names = ", ".join(r["table_name"] for r in rows)
+        await update.message.reply_text(f"✅ Connected! Tables: {names}")
+        await conn.close()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Connection failed: {e}")
+
 # === Main Entry ===
 
 def main():
@@ -188,50 +250,7 @@ def main():
     # Home button handler
     app.add_handler(MessageHandler(filters.Regex(r"^🏠 Home$"), start))
 
-    # Reminder toggle
-    async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.callback_query:
-            user_id = update.callback_query.from_user.id
-            await update.callback_query.answer()
-        else:
-            user_id = update.effective_user.id
-
-        conn = sqlite3.connect("jobpal.db")
-        c = conn.cursor()
-        c.execute(
-            "SELECT reminders_enabled FROM user_preferences WHERE user_id = ?",
-            (user_id,)
-        )
-        row = c.fetchone()
-        new_state = 0 if (row and row[0] == 1) else 1
-        c.execute(
-            "INSERT OR REPLACE INTO user_preferences (user_id, reminders_enabled) VALUES (?, ?)",
-            (user_id, new_state)
-        )
-        conn.commit()
-        conn.close()
-
-        status = "ON" if new_state == 1 else "OFF"
-        text = (
-            f"🔔 Reminders are now *{status}*." +
-            " I will send you reminders at 09:00, 15:00, and 21:00 daily "
-            "(last at 21:00 because the leaderboard closes at 22:00)."
-        )
-        btn_label = "Turn OFF" if new_state == 1 else "Turn ON"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]
-        ])
-
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                text, parse_mode="Markdown", reply_markup=keyboard
-            )
-        else:
-            await update.message.reply_text(
-                text, parse_mode="Markdown", reply_markup=keyboard
-            )
-
-    # Register handlers
+    # Command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(CommandHandler("reminders", toggle_reminders))
@@ -240,6 +259,7 @@ def main():
     app.add_handler(CommandHandler("about", about))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("progress", progress_handler))
+    app.add_handler(CommandHandler("testdb", testdb))  # new testdb handler
     app.add_handler(get_setgoal_handler())
     app.add_handler(get_logjobs_handler())
     app.add_handler(get_setname_handler())

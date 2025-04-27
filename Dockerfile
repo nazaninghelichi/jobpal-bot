@@ -1,14 +1,27 @@
-# Use a small Python image
-FROM python:3.12-slim
+# Use a specific, up-to-date Python release on Debian Bookworm for security patches
+FROM python:3.12.8-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
-# Copy everything from your project into the image
+# Install OS-level dependencies and apply security upgrades
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install --no-install-recommends -y build-essential libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency manifest first for better caching
+COPY requirements.txt ./
+
+# Install Python dependencies, upgrading pip and setuptools
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools \
+    && python3 -m pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the project files
 COPY . .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Expose the port Gunicorn will serve on
+EXPOSE 8080
 
-# Run Gunicorn (production server) with your app
+# Run Gunicorn as the production server
 CMD ["gunicorn", "-b", "0.0.0.0:8080", "main:app"]
