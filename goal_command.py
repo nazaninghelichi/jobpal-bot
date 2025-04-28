@@ -8,6 +8,7 @@ from telegram.ext import CommandHandler, CallbackQueryHandler, ConversationHandl
 from config import GIPHY_API_KEY
 from db import get_db_connection
 
+# Configure logger
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -81,6 +82,7 @@ async def update_count(user_id: int, new_done: int):
 # =========================================
 async def start_setgoal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    logger.info(f"/setgoal initiated by user {user_id}")
     goal, _ = await get_or_create_today(user_id)
     keyboard = [
         [InlineKeyboardButton(str(step), callback_data=f"{BUTTON_PREFIX}{step}") for step in BUTTON_STEPS],
@@ -97,14 +99,17 @@ async def start_setgoal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_setgoal_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
+    user_id = q.from_user.id
     data = q.data
+    logger.info(f"handle_setgoal_choice: user {user_id} selected {data}")
     if data == "cancel":
         await q.edit_message_text("❌ Goal setting cancelled.")
         return ConversationHandler.END
     new_goal = int(data.replace(BUTTON_PREFIX, ""))
-    await set_goal(q.from_user.id, new_goal)
+    await set_goal(user_id, new_goal)
     await q.edit_message_text(f"✅ Daily goal set to *{new_goal}*!", parse_mode="Markdown")
     return ConversationHandler.END
+
 
 def get_setgoal_handler() -> ConversationHandler:
     return ConversationHandler(
@@ -115,7 +120,8 @@ def get_setgoal_handler() -> ConversationHandler:
                 CallbackQueryHandler(handle_setgoal_choice, pattern="^cancel$")
             ]
         },
-        fallbacks=[]
+        fallbacks=[],
+        per_message=True
     )
 
 # =========================================
@@ -128,6 +134,7 @@ def build_log_ui(done: int, goal: int) -> str:
 
 async def start_logjobs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    logger.info(f"/logjobs initiated by user {user_id}")
     goal, done = await get_or_create_today(user_id)
     keyboard = [
         [InlineKeyboardButton("➕ Log one", callback_data=f"{LOG_PREFIX}inc")],
@@ -145,6 +152,7 @@ async def log_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     user_id = q.from_user.id
     action = q.data
+    logger.info(f"log_button triggered for user {user_id} with action {action}")
     if action == f"{LOG_PREFIX}inc":
         done = await fetch_count(user_id) + 1
         await update_count(user_id, done)
@@ -177,11 +185,13 @@ async def log_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+
 def get_logjobs_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("logjobs", start_logjobs)],
         states={LOGGING: [CallbackQueryHandler(log_button)]},
-        fallbacks=[CallbackQueryHandler(log_button, pattern="^cancel$")]
+        fallbacks=[CallbackQueryHandler(log_button, pattern="^cancel$")],
+        per_message=True
     )
 
 # =========================================
