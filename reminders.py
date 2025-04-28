@@ -1,38 +1,44 @@
 import logging
-import sqlite3
-import requests
 from datetime import time, date
-
 from telegram import Update
 from telegram.ext import ContextTypes
+from db import get_db_connection
 from config import GIPHY_API_KEY
+import requests
 
 logger = logging.getLogger(__name__)
 
-# Helper to fetch display name and counts
-def _get_user_info(user_id: int):
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
-    # Display name
-    c.execute(
-        "SELECT COALESCE(NULLIF(username, ''), first_name) FROM users WHERE user_id = ?",
-        (user_id,)
+# =========================================
+# Helper to fetch display name and stats via Postgres
+# =========================================
+async def _get_user_info(user_id: int):
+    conn = await get_db_connection()
+    # Fetch display name
+    row = await conn.fetchrow(
+        "SELECT COALESCE(NULLIF(username, ''), first_name) AS display_name "
+        "FROM users WHERE user_id = $1",
+        user_id
     )
-    row = c.fetchone()
-    display_name = row[0] if row and row[0] else 'there'
-    # Today's goal and done
-    today = date.today().isoformat()
-    c.execute(
-        "SELECT goal, done FROM daily_track WHERE user_id = ? AND date = ?",
-        (user_id, today)
+    display_name = row['display_name'] if row else 'there'
+
+    # Fetch today's goal and done
+    today_iso = date.today().isoformat()
+    row2 = await conn.fetchrow(
+        "SELECT goal, done FROM daily_track WHERE user_id = $1 AND date = $2",
+        user_id, today_iso
     )
-    row = c.fetchone() or (0, 0)
-    goal, done = row
-    conn.close()
+    if row2:
+        goal, done = row2['goal'], row2['done']
+    else:
+        goal, done = 0, 0
+
+    await conn.close()
     return display_name, goal, done
 
+# =========================================
 # Helper to fetch a random GIF from Giphy
-def _get_random_gif(tag: str):
+# =========================================
+async def _get_random_gif(tag: str):
     try:
         resp = requests.get(
             "https://api.giphy.com/v1/gifs/random",
@@ -45,17 +51,19 @@ def _get_random_gif(tag: str):
         logger.warning(f"Giphy API error for tag '{tag}': {e}")
         return None
 
-# === Reminder Handlers ===
-
+# =========================================
+# Reminder Callbacks (async)  
+# =========================================
 async def morning_reminder(context: ContextTypes.DEFAULT_TYPE):
     """Send morning reminder at 09:00."""
     job = context.job
     user_id = job.chat_id
-    display_name, goal, _ = _get_user_info(user_id)
 
-    text = f"😺 Good meowrning, {display_name}! {goal} applications on today’s menu."
+    display_name, goal, _ = await _get_user_info(user_id)
+    text = f"😺 Good morning, {display_name}! You have a goal of {goal} applications today."
     await context.bot.send_message(chat_id=user_id, text=text)
-    gif_url = _get_random_gif("cat morning")
+
+    gif_url = await _get_random_gif("cat morning")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
@@ -63,11 +71,12 @@ async def afternoon_reminder(context: ContextTypes.DEFAULT_TYPE):
     """Send afternoon reminder at 15:00."""
     job = context.job
     user_id = job.chat_id
-    display_name, goal, done = _get_user_info(user_id)
 
-    text = f"🐱 How’s the hunt? {done} logged so far—keep the momentum!"
+    display_name, goal, done = await _get_user_info(user_id)
+    text = f"🐱 How’s the hunt, {display_name}? {done} logged out of {goal} so far—keep going!"
     await context.bot.send_message(chat_id=user_id, text=text)
-    gif_url = _get_random_gif("cat hunting")
+
+    gif_url = await _get_random_gif("cat hunting")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
@@ -75,18 +84,28 @@ async def evening_reminder(context: ContextTypes.DEFAULT_TYPE):
     """Send evening reminder at 21:00."""
     job = context.job
     user_id = job.chat_id
-    display_name, goal, done = _get_user_info(user_id)
 
-    text = f"🌠 Final catcall—submit before 22:00 to make the leaderboard."
+    display_name, goal, done = await _get_user_info(user_id)
+    text = f"🌠 Final call, {display_name}! You've logged {done}/{goal}. Last chance before leaderboard!"
     await context.bot.send_message(chat_id=user_id, text=text)
-    gif_url = _get_random_gif("cat night")
+
+    gif_url = await _get_random_gif("cat night")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
-# === Registration ===
+# =========================================
+# Registration (per-user via Postgres preferences)
+# =========================================
+async def register_reminders(job_queue):
+    # Schedule reminders for users with reminders_enabled = true
+    conn = await get_db_connection()
+    rows = await conn.fetch(
+        "SELECT user_id FROM user_preferences WHERE reminders_enabled = TRUE"
+    )
+    await conn.close()
 
-def register_reminders(job_queue):
-    # Schedule daily reminders
-    job_queue.run_daily(morning_reminder, time=time(hour=9, minute=0))
-    job_queue.run_daily(afternoon_reminder, time=time(hour=15, minute=0))
-    job_queue.run_daily(evening_reminder, time=time(hour=21, minute=0))
+    for r in rows:
+        uid = r['user_id']
+        job_queue.run_daily(morning_reminder, time=time(hour=9, minute=0), chat_id=uid)
+        job_queue.run_daily(afternoon_reminder, time=time(hour=15, minute=0), chat_id=uid)
+        job_queue.run_daily(evening_reminder, time=time(hour=21, minute=0), chat_id=uid)

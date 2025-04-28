@@ -203,11 +203,11 @@ def main():
     app.add_handler(get_setname_handler())
     app.add_handler(CallbackQueryHandler(start, pattern="^cancel$"))
 
-    # Schedule reminders
-    register_reminders(app.job_queue)
+        # Schedule reminders by seeding existing preferences
+    asyncio.get_event_loop().run_until_complete(register_reminders(app.job_queue))
 
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True)(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
