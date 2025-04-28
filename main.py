@@ -1,8 +1,7 @@
 import logging
-import sqlite3
 import os
-import asyncpg
-from datetime import date, time as dtime
+import asyncio
+from datetime import date
 from keep_alive import keep_alive
 keep_alive()
 from dotenv import load_dotenv
@@ -26,58 +25,13 @@ from goal_command import (
 from username_command import get_setname_handler
 from leaderboard_command import leaderboard as leaderboard_actual
 from config import TELEGRAM_BOT_TOKEN
-from reminders import register_reminders  # new reminder registrations
+from reminders import register_reminders
+from db import get_pg_conn, init_db_pg
 
 logger = logging.getLogger(__name__)
 
-# === Combined DB Initialization ===
-
-def init_db():
-    """
-    Create all required tables in a single DB call, including migrating schema for reminders.
-    """
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
-    # user_preferences table with reminders_enabled flag
-    c.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS user_preferences (
-            user_id INTEGER PRIMARY KEY,
-            reminders_enabled INTEGER DEFAULT 1
-        )
-        '''
-    )
-    # users meta table
-    c.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id      INTEGER PRIMARY KEY,
-            username     TEXT DEFAULT '',
-            first_name   TEXT DEFAULT '',
-            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            found_job    BOOLEAN DEFAULT FALSE
-        )
-        '''
-    )
-    # daily tracking table
-    c.execute(
-        '''
-        CREATE TABLE IF NOT EXISTS daily_track (
-            user_id INTEGER,
-            date TEXT,
-            goal INTEGER DEFAULT 0,
-            done INTEGER DEFAULT 0,
-            PRIMARY KEY (user_id, date)
-        )
-        '''
-    )
-    conn.commit()
-    conn.close()
-
 # === Keyboards ===
-HOME_KB = ReplyKeyboardMarkup([
-    ['🏠 Home']
-], resize_keyboard=True)
+HOME_KB = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
 
 # === Core Handlers ===
 
@@ -85,34 +39,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
-    c.execute(
-        "INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
-        (user_id, '', user.first_name or '')
+    conn = await get_pg_conn()
+    # Upsert user
+    await conn.execute(
+        "INSERT INTO users(user_id, username, first_name) VALUES($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name",
+        user_id, '', user.first_name or ''
     )
-    c.execute(
-        "UPDATE users SET first_name = ? WHERE user_id = ?",
-        (user.first_name or '', user_id)
+    # Fetch display name
+    row = await conn.fetchrow(
+        "SELECT COALESCE(NULLIF(username, ''), first_name) AS display_name FROM users WHERE user_id = $1",
+        user_id
     )
-    conn.commit()
-    c.execute(
-        "SELECT COALESCE(NULLIF(username, ''), first_name) FROM users WHERE user_id = ?",
-        (user_id,)
-    )
-    display_name = c.fetchone()[0] or 'there'
-    conn.close()
+    display_name = row['display_name'] if row and row['display_name'] else 'there'
 
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
+    # Check daily goal
     today = date.today().isoformat()
-    c.execute(
-        "SELECT goal FROM daily_track WHERE user_id = ? AND date = ?",
-        (user_id, today)
+    row2 = await conn.fetchrow(
+        "SELECT goal FROM daily_track WHERE user_id = $1 AND date = $2",
+        user_id, today
     )
-    row = c.fetchone()
-    conn.close()
-    has_goal = bool(row and row[0] > 0)
+    has_goal = bool(row2 and row2['goal'] > 0)
+    await conn.close()
 
     tip = ""
     if not has_goal:
@@ -135,6 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_kb,
         parse_mode="Markdown"
     )
+    logger.info(f"/start triggered by {display_name} ({user_id})")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -185,65 +133,56 @@ async def progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.callback_query.from_user.id if update.callback_query else update.effective_user.id
     if update.callback_query:
-        user_id = update.callback_query.from_user.id
         await update.callback_query.answer()
-    else:
-        user_id = update.effective_user.id
 
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
-    c.execute(
-        "SELECT reminders_enabled FROM user_preferences WHERE user_id = ?",
-        (user_id,)
+    conn = await get_pg_conn()
+    row = await conn.fetchrow(
+        "SELECT reminders_enabled FROM user_preferences WHERE user_id = $1",
+        user_id
     )
-    row = c.fetchone()
-    new_state = 0 if (row and row[0] == 1) else 1
-    c.execute(
-        "INSERT OR REPLACE INTO user_preferences (user_id, reminders_enabled) VALUES (?, ?)",
-        (user_id, new_state)
+    new_state = not bool(row and row['reminders_enabled'])
+    await conn.execute(
+        "INSERT INTO user_preferences(user_id, reminders_enabled) VALUES($1,$2) ON CONFLICT (user_id) DO UPDATE SET reminders_enabled = EXCLUDED.reminders_enabled",
+        user_id, new_state
     )
-    conn.commit()
-    conn.close()
+    await conn.close()
 
-    status = "ON" if new_state == 1 else "OFF"
+    status = "ON" if new_state else "OFF"
     text = (
         f"🔔 Reminders are now *{status}*."
         " I will send you reminders at 09:00, 15:00, and 21:00 daily"
         " (last at 21:00 because the leaderboard closes at 22:00)."
     )
-    btn_label = "Turn OFF" if new_state == 1 else "Turn ON"
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]
-    ])
+    btn_label = "Turn OFF" if new_state else "Turn ON"
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]])
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=keyboard)
     else:
-        await update.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Connects to Supabase and lists public tables."""
+    """Connects to Postgres and lists public tables."""
     try:
-        conn = await asyncpg.connect(os.getenv("DATABASE_URL"))
+        conn = await get_pg_conn()
         rows = await conn.fetch(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='public';"
         )
-        names = ", ".join(r["table_name"] for r in rows)
+        names = ", ".join(r['table_name'] for r in rows)
         await update.message.reply_text(f"✅ Connected! Tables: {names}")
         await conn.close()
     except Exception as e:
         await update.message.reply_text(f"❌ Connection failed: {e}")
 
-# === Main Entry ===
+# === Startup ===
+# Initialize Postgres schema before starting the bot
+asyncio.run(init_db_pg())
 
+# === Main Entry ===
 def main():
     logger.info("🔥 Running JobPal…")
-    init_db()
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -259,19 +198,18 @@ def main():
     app.add_handler(CommandHandler("about", about))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("progress", progress_handler))
-    app.add_handler(CommandHandler("testdb", testdb))  # new testdb handler
+    app.add_handler(CommandHandler("testdb", testdb))
     app.add_handler(get_setgoal_handler())
     app.add_handler(get_logjobs_handler())
     app.add_handler(get_setname_handler())
     app.add_handler(CallbackQueryHandler(start, pattern="^cancel$"))
 
-    # Schedule cat-themed reminders
+    # Schedule reminders
     jq = app.job_queue
     register_reminders(jq)
 
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,6 @@
-import asyncpg
-import os
-from dotenv import load_dotenv
+# db.py
+import os, asyncpg
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch the Supabase database URL
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Create an async database connection
-async def get_db_connection():
-    conn = await asyncpg.connect(DATABASE_URL)
-    return conn
+async def get_pg_conn():
+    """Return a new asyncpg connection using the RAILWAY-provided DATABASE_URL."""
+    return await asyncpg.connect(os.getenv("DATABASE_URL"))
