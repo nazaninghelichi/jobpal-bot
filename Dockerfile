@@ -20,8 +20,8 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools \
 # Copy the rest of the project files
 COPY . .
 
-# Expose the port Gunicorn will serve on
+# Expose the port for the health check endpoint (optional)
 EXPOSE 8080
 
-# Run Gunicorn as the production server
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "main:app"]
+# Run the Telegram bot (with a Flask health server) via Python entrypoint
+CMD ["python3", "main.py"]
