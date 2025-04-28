@@ -3,13 +3,25 @@
 import os
 import asyncpg
 
+# Load database URL from environment
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 async def get_pg_conn():
-    return await asyncpg.connect(DATABASE_URL, ssl="require")
+    """
+    Return a new asyncpg connection to the Postgres database.
+    """
+    # Remove forced SSL to support local and remote connections via URL parameters
+    return await asyncpg.connect(DATABASE_URL)
+
+# Alias for backward compatibility with goal_command imports
+get_db_connection = get_pg_conn
 
 async def init_db_pg():
+    """
+    Initialize the Postgres schema: users, daily_track, and user_preferences tables.
+    """
     conn = await get_pg_conn()
+
     # Create users table
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -18,6 +30,7 @@ async def init_db_pg():
           first_name TEXT
         );
     """)
+
     # Create daily_track table
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS daily_track (
@@ -28,6 +41,7 @@ async def init_db_pg():
           PRIMARY KEY(user_id, date)
         );
     """)
+
     # Create user_preferences table
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS user_preferences (
@@ -35,4 +49,5 @@ async def init_db_pg():
           reminders_enabled BOOLEAN    DEFAULT TRUE
         );
     """)
+
     await conn.close()
