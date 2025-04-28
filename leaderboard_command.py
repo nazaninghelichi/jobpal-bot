@@ -1,55 +1,51 @@
 from telegram import Update
-from telegram.ext import CommandHandler, ContextTypes
-import sqlite3
-from datetime import datetime, timedelta, date
-import random, logging
+from telegram.ext import ContextTypes
+import logging
+from datetime import date
+from db import get_db_connection
+from telegram import ReplyKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
-funny_names = [
-    "Mysterious Logger 🕵️‍♀️", "Anonymous Alpaca 🦙", "No-Name Ninja 🧤",
-    "Nameless Narwhal 🐋", "Unknown Unicorn 🦄", "Froggy Ghost 🐸👻",
-    "Secret Squirrel 🐿️", "Shadow Sloth 🦥",
-]
-
-def get_todays_top_users(limit=5):
-    today = date.today().isoformat()
-    conn = sqlite3.connect("jobpal.db")
-    c = conn.cursor()
-    c.execute("""
-        SELECT dt.user_id,
-               COALESCE(NULLIF(u.username, ''), u.first_name) AS display_name,
-               dt.done AS total
-          FROM daily_track dt
-     LEFT JOIN users u ON dt.user_id = u.user_id
-         WHERE dt.date = ?
-           AND dt.done > 0
-      ORDER BY total DESC
-         LIMIT ?
-    """, (today, limit))
-    rows = c.fetchall()
-    conn.close()
-
-    # Ignore user_id; unpack display_name & total correctly
-    result = []
-    for _user_id, display_name, total in rows:
-        name = display_name or random.choice(funny_names)
-        result.append((name, total))
-    return result
-
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    rows = get_todays_top_users(limit=10)
-    date_str = date.today().isoformat()
-    text = f"🏅 **Top Loggers Today ({date_str}):**\n\n"
+    """
+    Fetch and display the top 5 users by jobs logged for today from the database.
+    """
+    # Connect to Postgres
+    conn = await get_db_connection()
+    today_str = date.today().isoformat()
 
+    # Query top performers from Postgres
+    rows = await conn.fetch(
+        """
+        SELECT u.user_id,
+               COALESCE(NULLIF(u.username, ''), u.first_name) AS display_name,
+               dt.done
+        FROM daily_track dt
+        JOIN users u ON u.user_id = dt.user_id
+        WHERE dt.date = $1 AND dt.done > 0
+        ORDER BY dt.done DESC
+        LIMIT 5;
+        """,
+        today_str
+    )
+    await conn.close()
+
+    # Build response text
     if not rows:
-        text += "No entries yet — get logging!"
+        text = "📋 No one has logged jobs today yet."
     else:
-        medals = ["🥇","🥈","🥉"]
-        for i, (name, total) in enumerate(rows):
-            rank = medals[i] if i < 3 else f"{i+1}."
-            text += f"{rank} **{name}** — **{total}** apps\n"
+        text_lines = [f"🏆 *Today's Top Applicants ({today_str}):*", ""]
+        for rank, row in enumerate(rows, start=1):
+            medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(rank, f"{rank}.")
+            text_lines.append(f"{medal} *{row['display_name']}* — {row['done']} logged")
+        text = "\n".join(text_lines)
 
-    total_all = sum(t for _, t in rows)
-    text += f"\n\n🎯 Total today: **{total_all}**"
-    await update.message.reply_text(text, parse_mode="Markdown")
+    # Include a Home button
+    home_kb = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
+
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=home_kb
+    )
