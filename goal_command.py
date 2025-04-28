@@ -110,7 +110,6 @@ async def handle_setgoal_choice(update: Update, context: ContextTypes.DEFAULT_TY
     await q.edit_message_text(f"✅ Daily goal set to *{new_goal}*!", parse_mode="Markdown")
     return ConversationHandler.END
 
-
 def get_setgoal_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("setgoal", start_setgoal)],
@@ -120,8 +119,7 @@ def get_setgoal_handler() -> ConversationHandler:
                 CallbackQueryHandler(handle_setgoal_choice, pattern="^cancel$")
             ]
         },
-        fallbacks=[],
-        per_message=True
+        fallbacks=[]
     )
 
 # =========================================
@@ -162,7 +160,6 @@ async def log_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=q.message.reply_markup
         )
         return LOGGING
-    # Done logging
     done = await fetch_count(user_id)
     await q.edit_message_text("🎉 Logged! Great work today.", reply_markup=None)
     try:
@@ -185,13 +182,11 @@ async def log_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-
 def get_logjobs_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CommandHandler("logjobs", start_logjobs)],
         states={LOGGING: [CallbackQueryHandler(log_button)]},
-        fallbacks=[CallbackQueryHandler(log_button, pattern="^cancel$")],
-        per_message=True
+        fallbacks=[CallbackQueryHandler(log_button, pattern="^cancel$")]
     )
 
 # =========================================
