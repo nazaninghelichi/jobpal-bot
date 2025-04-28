@@ -23,5 +23,5 @@ COPY . .
 # Expose the port for the health check endpoint (optional)
 EXPOSE 8080
 
-# Run the Telegram bot (with a Flask health server) via Python entrypoint
+# Run the Telegram bot entrypoint
 CMD ["python3", "main.py"]
