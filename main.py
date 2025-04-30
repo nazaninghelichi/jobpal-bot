@@ -12,24 +12,24 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes,
     MessageHandler,
-    filters
+    filters,
+    ContextTypes
 )
+import telegram.ext
 
-from goal_command import (
-    get_setgoal_handler,
-    get_logjobs_handler,
-    progress
-)
+from goal_command import get_setgoal_handler, get_logjobs_handler, progress
 from username_command import get_setname_handler
 from leaderboard_command import leaderboard as leaderboard_actual
 from config import TELEGRAM_BOT_TOKEN
 from reminders import register_reminders
 from db import get_pg_conn, init_db_pg
 
+# === Logging Configuration ===
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+# Enable DEBUG logging for handler dispatch
+telegram.ext.logger.setLevel(logging.DEBUG)
 
 # === Keyboards ===
 HOME_KB = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
@@ -40,13 +40,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
 
     conn = await get_pg_conn()
-    # Upsert user
+    # Upsert user record
     await conn.execute(
         "INSERT INTO users(user_id, username, first_name) VALUES($1, $2, $3) "
         "ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name",
         user_id, '', user.first_name or ''
     )
-    # Fetch display name
     row = await conn.fetchrow(
         "SELECT COALESCE(NULLIF(username, ''), first_name) AS display_name "
         "FROM users WHERE user_id = $1",
@@ -54,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     display_name = row['display_name'] if row and row['display_name'] else 'there'
 
-    # Check daily goal
+    # Check if today's goal is set
     today = date.today().isoformat()
     row2 = await conn.fetchrow(
         "SELECT goal FROM daily_track WHERE user_id = $1 AND date = $2",
@@ -63,9 +62,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     has_goal = bool(row2 and row2['goal'] > 0)
     await conn.close()
 
-    tip = ""
+    tip = ''
     if not has_goal:
-        tip = "\n\n⚠️ _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._"
+        tip = '\n\n⚠️ _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._'
 
     main_kb = ReplyKeyboardMarkup([
         ['/logjobs', '/setgoal'],
@@ -154,7 +153,7 @@ async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status = "ON" if new_state else "OFF"
     text = (
-        f"🔔 Reminders are now *{status}*." +
+        f"🔔 Reminders are now *{status}*."
         " I will send you reminders at 09:00, 15:00, and 21:00 daily"
         " (last at 21:00 because the leaderboard closes at 22:00)."
     )
@@ -184,10 +183,14 @@ def main():
     # Initialize DB schema
     asyncio.get_event_loop().run_until_complete(init_db_pg())
 
-    # Build bot application
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Register handlers
+    # --- Conversation handlers (highest priority) ---
+    app.add_handler(get_setgoal_handler(), group=0)
+    app.add_handler(get_logjobs_handler(), group=0)
+    app.add_handler(get_setname_handler(), group=0)
+
+    # --- Core command handlers ---
     app.add_handler(MessageHandler(filters.Regex(r"^🏠 Home$"), start))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("settings", settings_command))
@@ -198,10 +201,6 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("progress", progress_handler))
     app.add_handler(CommandHandler("testdb", testdb))
-    app.add_handler(get_setgoal_handler())
-    app.add_handler(get_logjobs_handler())
-    app.add_handler(get_setname_handler())
-    app.add_handler(CallbackQueryHandler(start, pattern="^cancel$"))
 
     # Schedule reminders
     register_reminders(app.job_queue)
