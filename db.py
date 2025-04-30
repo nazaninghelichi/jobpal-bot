@@ -1,30 +1,39 @@
 import os
-import asyncpg
 from dotenv import load_dotenv
+import asyncpg
 
-# Load environment variables (DEV_DATABASE_URL, DATABASE_URL, PG* vars) from .env in local dev
-# In production (e.g. Railway), DATABASE_URL or PG* vars will be injected automatically
+# Load environment variables (.env) in local development
+# In production (Railway), DATABASE_URL or PG* vars will be injected automatically
 load_dotenv()
 
-# Build the connection URL with this priority:
-# 1. DEV_DATABASE_URL (for local development)
-# 2. DATABASE_URL (Railway or other prod env var)
+# Build DATABASE_URL with this priority:
+# 1. DATABASE_URL (production)
+# 2. DEV_DATABASE_URL (local development)
 # 3. Individual PG* vars (PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
-# 4. Fallback to a default localhost
-DATABASE_URL = (
-    os.getenv("DEV_DATABASE_URL")
-    or os.getenv("DATABASE_URL")
-    or (
-        f"postgresql://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
-        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT')}"
-        f"/{os.getenv('PGDATABASE')}"
+# 4. Fallback to localhost default
+prod_url = os.getenv("DATABASE_URL", "").strip()
+dev_url = os.getenv("DEV_DATABASE_URL", "").strip()
+pg_host = os.getenv("PGHOST")
+pg_port = os.getenv("PGPORT")
+pg_user = os.getenv("PGUSER")
+pg_password = os.getenv("PGPASSWORD")
+pg_database = os.getenv("PGDATABASE")
+
+if prod_url:
+    DATABASE_URL = prod_url
+elif dev_url:
+    DATABASE_URL = dev_url
+elif pg_host and pg_port and pg_user and pg_password and pg_database:
+    DATABASE_URL = (
+        f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_database}"
     )
-    or "postgresql://postgres:secret@localhost:5432/railway"
-)
+else:
+    # Last-resort localhost fallback
+    DATABASE_URL = "postgresql://postgres:secret@localhost:5432/railway"
 
 async def get_pg_conn():
     """
-    Return a new asyncpg connection to the Postgres database based on DATABASE_URL.
+    Return a new asyncpg connection to the Postgres database.
     """
     return await asyncpg.connect(DATABASE_URL)
 
