@@ -1,41 +1,46 @@
+#!/usr/bin/env python3
 """
 seed_daily_funny_data.py
 
-This script seeds dummy data for a set of "funny" users across the past 30 days.
+This script seeds dummy data for a set of "funny" cat-themed users across the past 30 days.
 Each day each user will have a random 'done' count between 0 and 7 against a fixed goal of 7.
 
 Usage:
-  - Ensure DATABASE_URL is set in your environment (or uses your local fallback).
+  - Ensure your `.env` has DEV_DATABASE_URL or DATABASE_URL set correctly.
   - Run:
       python seed_daily_funny_data.py
 """
+
 import asyncio
 import random
 from datetime import date, timedelta
-from db import get_db_connection
+from db import get_pg_conn, init_db_pg
 
 # Configuration
 DAYS_BACK = 30            # number of days to seed (including today)
 GOAL_PER_DAY = 7          # fixed daily goal for all users
 USER_PROFILES = [
-    (7001, 'kevin_minion', 'Kevin (Minion)'),               # mischievous yellow hero
-    (7002, 'ace_ventura', 'Ace Ventura'),                  # pet detective extraordinaire
-    (7003, 'lloyd_christmas', 'Lloyd Christmas'),         # lovable goofball
-    (7004, 'the_dude', 'The Dude'),                       # laid-back bowling legend
-    (7005, 'sheldon_cooper', 'Sheldon Cooper'),           # brilliant but quirky physicist
-    (7006, 'brick_tamland', 'Brick Tamland'),             # anchorman with odd insights
-    (7007, 'jack_sparrow', 'Captain Jack Sparrow'),       # eccentric pirate captain
-    (7008, 'buddy_elf', 'Buddy the Elf'),                 # cheerful holiday fanatic
-    (7009, 'borat_sagdiyev', 'Borat Sagdiyev'),           # over-the-top reporter
-    (7010, 'mr_bean', 'Mr. Bean')                         # silent comedic genius
+    (7001, 'whiskers_wonder', 'Whiskers the Wonder'),
+    (7002, 'sir_pounce', 'Sir Pounce'),
+    (7003, 'captain_meow', 'Captain Meow'),
+    (7004, 'fuzzball_fia', 'Fuzzball Fia'),
+    (7005, 'mr_snuggles', 'Mr. Snuggles'),
+    (7006, 'queen_clawdia', 'Queen Clawdia'),
+    (7007, 'baron_whiskerpaws', 'Baron Whiskerpaws'),
+    (7008, 'princess_purrfect', 'Princess Purrfect'),
+    (7009, 'doodle_paw', 'Doodle Paw'),
+    (7010, 'lord_meowington', 'Lord Meowington'),
 ]
 
 async def seed_funny_data():
-    conn = await get_db_connection()
+    # Ensure tables exist
+    await init_db_pg()
 
+    conn = await get_pg_conn()
     # 1) Ensure users exist
     await conn.executemany(
-        "INSERT INTO users(user_id, username, first_name) VALUES ($1, $2, $3) ON CONFLICT(user_id) DO NOTHING;",
+        "INSERT INTO users(user_id, username, first_name) VALUES ($1, $2, $3) "
+        "ON CONFLICT(user_id) DO NOTHING;",
         USER_PROFILES
     )
 
@@ -55,7 +60,7 @@ async def seed_funny_data():
     )
 
     await conn.close()
-    print(f"✅ Seeded {len(USER_PROFILES)} users and {len(records)} daily records for past {DAYS_BACK} days.")
+    print(f"✅ Seeded {len(USER_PROFILES)} cat-themed users and {len(records)} daily records for past {DAYS_BACK} days.")
 
 if __name__ == '__main__':
     asyncio.run(seed_funny_data())
