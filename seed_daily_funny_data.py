@@ -2,8 +2,10 @@
 """
 seed_daily_funny_data.py
 
-This script seeds dummy data for a set of "funny" cat-themed users across the past 30 days.
-Each day each user will have a random 'done' count between 0 and 7 against a fixed goal of 7.
+This script seeds dummy data for a set of cat-themed "fake" users for **today** only.
+We generate one record per fake user, with a random 'done' count between 0 and 15 (mean ~4),
+against a fixed daily goal of 7.
+IDs in the 9000+ range mark these users as our internal fakes.
 
 Usage:
   - Ensure your `.env` has DEV_DATABASE_URL or DATABASE_URL set correctly.
@@ -13,23 +15,20 @@ Usage:
 
 import asyncio
 import random
-from datetime import date, timedelta
+from datetime import date
 from db import get_pg_conn, init_db_pg
 
 # Configuration
-DAYS_BACK = 30            # number of days to seed (including today)
-GOAL_PER_DAY = 7          # fixed daily goal for all users
+GOAL_PER_DAY = 7  # fixed daily goal for all users
+
+# Six cat-themed fake users with IDs in the 9000s to mark them as fakes
 USER_PROFILES = [
-    (7001, 'whiskers_wonder', 'Whiskers the Wonder'),
-    (7002, 'sir_pounce', 'Sir Pounce'),
-    (7003, 'captain_meow', 'Captain Meow'),
-    (7004, 'fuzzball_fia', 'Fuzzball Fia'),
-    (7005, 'mr_snuggles', 'Mr. Snuggles'),
-    (7006, 'queen_clawdia', 'Queen Clawdia'),
-    (7007, 'baron_whiskerpaws', 'Baron Whiskerpaws'),
-    (7008, 'princess_purrfect', 'Princess Purrfect'),
-    (7009, 'doodle_paw', 'Doodle Paw'),
-    (7010, 'lord_meowington', 'Lord Meowington'),
+    (9001, 'whiskers_wonder', 'Whiskers the Wonder'),
+    (9002, 'sir_pounce', 'Sir Pounce'),
+    (9003, 'captain_meow', 'Captain Meow'),
+    (9004, 'fuzzball_fia', 'Fuzzball Fia'),
+    (9005, 'mr_snuggles', 'Mr. Snuggles'),
+    (9006, 'princess_purrfect', 'Princess Purrfect'),
 ]
 
 async def seed_funny_data():
@@ -37,30 +36,36 @@ async def seed_funny_data():
     await init_db_pg()
 
     conn = await get_pg_conn()
-    # 1) Ensure users exist
+    # 1) Upsert fake users
     await conn.executemany(
-        "INSERT INTO users(user_id, username, first_name) VALUES ($1, $2, $3) "
-        "ON CONFLICT(user_id) DO NOTHING;",
+        """
+        INSERT INTO users(user_id, username, first_name)
+        VALUES ($1, $2, $3)
+        ON CONFLICT(user_id) DO NOTHING;
+        """,
         USER_PROFILES
     )
 
-    # 2) Seed daily_track for past DAYS_BACK days
-    today = date.today()
+    # 2) Seed today's daily_track
+    today_iso = date.today().isoformat()
     records = []
-    for day_offset in range(DAYS_BACK + 1):
-        d = (today - timedelta(days=day_offset)).isoformat()
-        for user_id, _, _ in USER_PROFILES:
-            done = random.randint(0, GOAL_PER_DAY)
-            records.append((user_id, d, GOAL_PER_DAY, done))
+    for user_id, _, _ in USER_PROFILES:
+        # Random done between 0-15, mean ~4
+        done = max(0, min(15, int(random.gauss(4, 3))))
+        records.append((user_id, today_iso, GOAL_PER_DAY, done))
 
     await conn.executemany(
-        "INSERT INTO daily_track(user_id, date, goal, done) VALUES ($1, $2, $3, $4) "
-        "ON CONFLICT (user_id, date) DO UPDATE SET done = EXCLUDED.done;",
+        """
+        INSERT INTO daily_track(user_id, date, goal, done)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, date)
+        DO UPDATE SET done = EXCLUDED.done;
+        """,
         records
     )
 
     await conn.close()
-    print(f"✅ Seeded {len(USER_PROFILES)} cat-themed users and {len(records)} daily records for past {DAYS_BACK} days.")
+    print(f"✅ Seeded {len(USER_PROFILES)} fake users and {len(records)} records for today ({today_iso}).")
 
 if __name__ == '__main__':
     asyncio.run(seed_funny_data())
