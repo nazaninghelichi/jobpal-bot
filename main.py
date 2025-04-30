@@ -12,24 +12,25 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    ContextTypes,
     MessageHandler,
-    filters,
-    ContextTypes
+    filters
 )
-import telegram.ext
 
-from goal_command import get_setgoal_handler, get_logjobs_handler, progress
+from goal_command import (
+    get_setgoal_handler,
+    get_logjobs_handler,
+    progress
+)
 from username_command import get_setname_handler
 from leaderboard_command import leaderboard as leaderboard_actual
 from config import TELEGRAM_BOT_TOKEN
 from reminders import register_reminders
 from db import get_pg_conn, init_db_pg
 
-# === Logging Configuration ===
-logger = logging.getLogger(__name__)
+# Configure logging
 logging.basicConfig(level=logging.INFO)
-# Enable DEBUG logging for handler dispatch
-telegram.ext.logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # === Keyboards ===
 HOME_KB = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
@@ -40,12 +41,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
 
     conn = await get_pg_conn()
-    # Upsert user record
+    # Upsert user
     await conn.execute(
         "INSERT INTO users(user_id, username, first_name) VALUES($1, $2, $3) "
         "ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name",
         user_id, '', user.first_name or ''
     )
+    # Fetch display name
     row = await conn.fetchrow(
         "SELECT COALESCE(NULLIF(username, ''), first_name) AS display_name "
         "FROM users WHERE user_id = $1",
@@ -53,7 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     display_name = row['display_name'] if row and row['display_name'] else 'there'
 
-    # Check if today's goal is set
+    # Check daily goal
     today = date.today().isoformat()
     row2 = await conn.fetchrow(
         "SELECT goal FROM daily_track WHERE user_id = $1 AND date = $2",
@@ -62,9 +64,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     has_goal = bool(row2 and row2['goal'] > 0)
     await conn.close()
 
-    tip = ''
+    tip = ""
     if not has_goal:
-        tip = '\n\n⚠️ _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._'
+        tip = "\n\n⚠️ _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._"
 
     main_kb = ReplyKeyboardMarkup([
         ['/logjobs', '/setgoal'],
@@ -78,8 +80,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/setgoal` — Set or change your daily goal\n"
         "• `/leaderboard` — See today’s top applicants\n"
         "• `/progress` — See your weekly progress\n"
-        "• `/settings` — Configure name, reminders, and more"
-        + tip,
+        "• `/settings` — Configure name, reminders, and more" + tip,
         reply_markup=main_kb,
         parse_mode="Markdown"
     )
@@ -135,6 +136,7 @@ async def progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.callback_query.from_user.id if update.callback_query else update.effective_user.id
+    logger.info(f"🔔 toggle_reminders triggered by user {user_id!r}, callback={bool(update.callback_query)}")
     if update.callback_query:
         await update.callback_query.answer()
 
@@ -153,9 +155,7 @@ async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status = "ON" if new_state else "OFF"
     text = (
-        f"🔔 Reminders are now *{status}*."
-        " I will send you reminders at 09:00, 15:00, and 21:00 daily"
-        " (last at 21:00 because the leaderboard closes at 22:00)."
+        f"🔔 Reminders are now *{status}*. I will send you reminders at 09:00, 15:00, and 21:00 daily."
     )
     btn_label = "Turn OFF" if new_state else "Turn ON"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]])
@@ -166,6 +166,8 @@ async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Log invocation for debugging
+    logger.info(f"/testdb triggered by user {update.effective_user.id}")
     try:
         conn = await get_pg_conn()
         rows = await conn.fetch(
@@ -175,22 +177,17 @@ async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Connected! Tables: {names}")
         await conn.close()
     except Exception as e:
+        logger.error(f"/testdb error: {e}")
         await update.message.reply_text(f"❌ Connection failed: {e}")
 
 # === Bot Setup and Run ===
-def main():
+if __name__ == "__main__":
     logger.info("🔥 Running JobPal…")
-    # Initialize DB schema
     asyncio.get_event_loop().run_until_complete(init_db_pg())
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # --- Conversation handlers (highest priority) ---
-    app.add_handler(get_setgoal_handler(), group=0)
-    app.add_handler(get_logjobs_handler(), group=0)
-    app.add_handler(get_setname_handler(), group=0)
-
-    # --- Core command handlers ---
+    # Register handlers
     app.add_handler(MessageHandler(filters.Regex(r"^🏠 Home$"), start))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("settings", settings_command))
@@ -201,12 +198,15 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("progress", progress_handler))
     app.add_handler(CommandHandler("testdb", testdb))
+    app.add_handler(get_setgoal_handler())
+    app.add_handler(get_logjobs_handler())
+    app.add_handler(get_setname_handler())
+    app.add_handler(CallbackQueryHandler(start, pattern="^cancel$"))
 
-    # Schedule reminders
-    register_reminders(app.job_queue)
+    # Configure JobQueue timezone and schedule reminders
+    from zoneinfo import ZoneInfo
+    app.job_queue.scheduler.configure(timezone=ZoneInfo("America/Toronto"))
+    asyncio.get_event_loop().run_until_complete(register_reminders(app.job_queue))
 
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    main()

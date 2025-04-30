@@ -94,8 +94,6 @@ async def evening_reminder(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
 # =========================================
-# =========================================
-# =========================================
 # Registration (per-user via Postgres preferences)
 # =========================================
 async def register_reminders(job_queue):
@@ -109,7 +107,7 @@ async def register_reminders(job_queue):
     # Configure scheduler to use Toronto timezone once
     try:
         from zoneinfo import ZoneInfo
-        job_queue._scheduler.configure(timezone=ZoneInfo("America/Toronto"))
+        job_queue.scheduler.configure(timezone=ZoneInfo("America/Toronto"))
     except Exception as e:
         logger.warning(f"Scheduler timezone config failed: {e}")
 

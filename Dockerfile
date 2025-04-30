@@ -4,24 +4,29 @@ FROM python:3.12.8-slim-bookworm
 # Set working directory
 WORKDIR /app
 
-# Install OS-level dependencies and apply security upgrades
+# Install minimal system dependencies and apply security upgrades
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y build-essential libpq-dev \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency manifest first for better caching
+# Copy only requirements first for layer caching
 COPY requirements.txt ./
 
-# Install Python dependencies, upgrading pip and setuptools
+# Upgrade pip and install Python dependencies
 RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools \
     && python3 -m pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the project files
+# Copy application code into the image
 COPY . .
 
-# Expose the port for the health check endpoint (optional)
+# Ensure logs are not buffered
+ENV PYTHONUNBUFFERED=1
+
+# Expose port for optional health checks (not used by Telegram but good practice)
 EXPOSE 8080
 
-# Run the Telegram bot entrypoint
+# Start the bot
 CMD ["python3", "main.py"]
