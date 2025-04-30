@@ -94,18 +94,40 @@ async def evening_reminder(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
 # =========================================
+# =========================================
+# =========================================
 # Registration (per-user via Postgres preferences)
 # =========================================
 async def register_reminders(job_queue):
-    # Schedule reminders for users with reminders_enabled = true
+    # Fetch users with reminders enabled
     conn = await get_db_connection()
     rows = await conn.fetch(
         "SELECT user_id FROM user_preferences WHERE reminders_enabled = TRUE"
     )
     await conn.close()
 
+    # Configure scheduler to use Toronto timezone once
+    try:
+        from zoneinfo import ZoneInfo
+        job_queue._scheduler.configure(timezone=ZoneInfo("America/Toronto"))
+    except Exception as e:
+        logger.warning(f"Scheduler timezone config failed: {e}")
+
+    # Schedule daily reminders in local time
     for r in rows:
         uid = r['user_id']
-        job_queue.run_daily(morning_reminder, time=time(hour=9, minute=0), chat_id=uid)
-        job_queue.run_daily(afternoon_reminder, time=time(hour=15, minute=0), chat_id=uid)
-        job_queue.run_daily(evening_reminder, time=time(hour=21, minute=0), chat_id=uid)
+        job_queue.run_daily(
+            morning_reminder,
+            time=time(hour=9, minute=0),
+            chat_id=uid
+        )
+        job_queue.run_daily(
+            afternoon_reminder,
+            time=time(hour=15, minute=0),
+            chat_id=uid
+        )
+        job_queue.run_daily(
+            evening_reminder,
+            time=time(hour=21, minute=0),
+            chat_id=uid
+        )
