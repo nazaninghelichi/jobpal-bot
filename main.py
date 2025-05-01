@@ -27,6 +27,7 @@ from leaderboard_command import leaderboard as leaderboard_actual
 from config import TELEGRAM_BOT_TOKEN
 from reminders import register_reminders
 from db import get_pg_conn, init_db_pg
+from seed_daily_funny_data import seed_funny_data
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -210,3 +211,12 @@ if __name__ == "__main__":
 
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
+    
+    # Schedule daily fake-user seeder at 00:01
+    from datetime import time as dt_time
+    app.job_queue.run_daily(
+    lambda ctx: asyncio.create_task(seed_funny_data()),
+    time=dt_time(hour=0, minute=1),
+    name="seed-fake-data"
+     )
+
