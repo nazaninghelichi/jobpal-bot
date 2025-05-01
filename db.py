@@ -2,24 +2,27 @@ import os
 from dotenv import load_dotenv
 import asyncpg
 
-# Load environment variables (.env) in local development
-# In production (Railway), DATABASE_URL or PG* vars will be injected automatically
+# Load .env for local development (dotenv is optional in production)
 load_dotenv()
 
-# Build DATABASE_URL with this priority:
-# 1. DATABASE_URL (production)
-# 2. DEV_DATABASE_URL (local development)
-# 3. Individual PG* vars (PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
-# 4. Fallback to localhost default
-prod_url = os.getenv("DATABASE_URL", "").strip()
-dev_url = os.getenv("DEV_DATABASE_URL", "").strip()
-pg_host = os.getenv("PGHOST")
-pg_port = os.getenv("PGPORT")
-pg_user = os.getenv("PGUSER")
+# Build DATABASE_URL with priority:
+# 1. RAILWAY_DATABASE_URL (injected by Railway)
+# 2. DATABASE_URL (standard)
+# 3. DEV_DATABASE_URL (local development)
+# 4. Individual PG* vars (PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
+# 5. Fallback to localhost default
+railway_url = os.getenv("RAILWAY_DATABASE_URL", "").strip()
+prod_url    = os.getenv("DATABASE_URL", "").strip()
+dev_url     = os.getenv("DEV_DATABASE_URL", "").strip()
+pg_host     = os.getenv("PGHOST")
+pg_port     = os.getenv("PGPORT")
+pg_user     = os.getenv("PGUSER")
 pg_password = os.getenv("PGPASSWORD")
 pg_database = os.getenv("PGDATABASE")
 
-if prod_url:
+if railway_url:
+    DATABASE_URL = railway_url
+elif prod_url:
     DATABASE_URL = prod_url
 elif dev_url:
     DATABASE_URL = dev_url
