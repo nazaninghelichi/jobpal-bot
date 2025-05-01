@@ -63,7 +63,7 @@ async def morning_reminder(context: ContextTypes.DEFAULT_TYPE):
     text = f"😺 Good morning, {display_name}! You have a goal of {goal} applications today."
     await context.bot.send_message(chat_id=user_id, text=text)
 
-    gif_url = await _get_random_gif("cat morning")
+    gif_url = await _get_random_gif("come catch me cat")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
@@ -76,7 +76,7 @@ async def afternoon_reminder(context: ContextTypes.DEFAULT_TYPE):
     text = f"🐱 How’s the hunt, {display_name}? {done} logged out of {goal} so far—keep going!"
     await context.bot.send_message(chat_id=user_id, text=text)
 
-    gif_url = await _get_random_gif("cat hunting")
+    gif_url = await _get_random_gif("typing cat")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
@@ -89,7 +89,7 @@ async def evening_reminder(context: ContextTypes.DEFAULT_TYPE):
     text = f"🌠 Final call, {display_name}! You've logged {done}/{goal}. Last chance before leaderboard!"
     await context.bot.send_message(chat_id=user_id, text=text)
 
-    gif_url = await _get_random_gif("cat night")
+    gif_url = await _get_random_gif("Sleepy Cat Dont Bug Me")
     if gif_url:
         await context.bot.send_animation(chat_id=user_id, animation=gif_url)
 
