@@ -28,6 +28,7 @@ from config import TELEGRAM_BOT_TOKEN
 from reminders import register_reminders
 from db import get_pg_conn, init_db_pg
 from seed_daily_funny_data import seed_funny_data
+from wrapup import send_wrapup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,18 +38,22 @@ logger = logging.getLogger(__name__)
 HOME_KB = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
 
 # === Core Handlers ===
+async def wrapup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    display_name = update.effective_user.first_name or str(chat_id)
+    chat_names = {chat_id: display_name}
+    await send_wrapup(context.application, [chat_id], chat_names)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
     conn = await get_pg_conn()
-    # Upsert user
     await conn.execute(
         "INSERT INTO users(user_id, username, first_name) VALUES($1, $2, $3) "
         "ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name",
         user_id, '', user.first_name or ''
     )
-    # Fetch display name
     row = await conn.fetchrow(
         "SELECT COALESCE(NULLIF(username, ''), first_name) AS display_name "
         "FROM users WHERE user_id = $1",
@@ -56,7 +61,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     display_name = row['display_name'] if row and row['display_name'] else 'there'
 
-    # Check daily goal
     today = date.today().isoformat()
     row2 = await conn.fetchrow(
         "SELECT goal FROM daily_track WHERE user_id = $1 AND date = $2",
@@ -167,7 +171,6 @@ async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Log invocation for debugging
     logger.info(f"/testdb triggered by user {update.effective_user.id}")
     try:
         conn = await get_pg_conn()
@@ -198,6 +201,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("about", about))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("progress", progress_handler))
+    app.add_handler(CommandHandler("wrapup", wrapup_command))
     app.add_handler(CommandHandler("testdb", testdb))
     app.add_handler(get_setgoal_handler())
     app.add_handler(get_logjobs_handler())
@@ -212,19 +216,10 @@ if __name__ == "__main__":
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
 
-    # Schedule daily fake-user seeder at 00:01
-    from datetime import time as dt_time
-    app.job_queue.run_daily(
-    lambda ctx: asyncio.create_task(seed_funny_data()),
-    time=dt_time(hour=0, minute=1),
-    name="seed-fake-data"
-     )
-    # TEST ONLY: run fake‐seeder every minute
-app.job_queue.run_repeating(
-    lambda ctx: asyncio.create_task(seed_funny_data()),
-    interval=60,  # seconds
-    first=0,      # run immediately on startup
-    name="seed-fake-data-test"
-)
-
-
+    # Fake user seed
+    app.job_queue.run_repeating(
+        lambda ctx: asyncio.create_task(seed_funny_data()),
+        interval=6 * 3600,  # every six hours
+        first=0,             # run immediately on startup
+        name="seed-fake-data-6h"
+    )
