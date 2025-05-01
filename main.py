@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
     logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
-    
+
     # Schedule daily fake-user seeder at 00:01
     from datetime import time as dt_time
     app.job_queue.run_daily(
@@ -219,4 +219,12 @@ if __name__ == "__main__":
     time=dt_time(hour=0, minute=1),
     name="seed-fake-data"
      )
+    # TEST ONLY: run fake‐seeder every minute
+app.job_queue.run_repeating(
+    lambda ctx: asyncio.create_task(seed_funny_data()),
+    interval=60,  # seconds
+    first=0,      # run immediately on startup
+    name="seed-fake-data-test"
+)
+
 
