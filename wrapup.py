@@ -51,7 +51,7 @@ async def call_openrouter(prompt: str) -> str:
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
-            {"role": "system", "content": "You are a cold, elite headhunter with a sharp tongue and high standards. Keep it short, human, no fluff."},
+            {"role": "system", "content": "You are a cold, elite headhunter with a sharp tongue and high standards. Keep it short, human, no fluff. Each tip should sound like it came from someone who closes $300k deals before lunch."},
             {"role": "user", "content": prompt}
         ],
         "max_tokens": 400
@@ -81,10 +81,10 @@ async def build_wrapup_message(top: tuple[int, int], least: tuple[int, int], cha
     prompt = f"""Generate a short, 7-line leaderboard wrap-up:
 1. Start with 'Ladies and gentlemen,'
 2. Celebrate top performer: {top_name} nailed {top_count}/{top_goal}. Give a confident, witty compliment.
-3. Roast lowest performer: {least_name} did {least_count}/{least_goal}. Give a tough-love, funny but smart jab.
-4. Give one pro tip if user was in 0–33% performance.
-5. One different pro tip for 34–67%.
-6. One elite-level pro tip for 67–100%.
+3. Roast lowest performer: {least_name} did {least_count}/{least_goal}. Give a tough-love, clever jab.
+4. Create one unique pro tip for users in 0–33% performance.
+5. Create a different, non-repetitive pro tip for 34–67%.
+6. Create a sharp elite-level pro tip for 67–100% users.
 7. End with: 'One percent better tomorrow.'"""
 
     gif_url = await get_cat_gif_url()
@@ -111,9 +111,9 @@ async def build_wrapup_message(top: tuple[int, int], least: tuple[int, int], cha
         f"Top performer: {top_name} nailed {top_count}/{top_goal} applications (you’re single-handedly keeping recruiters in business).\n"
         f"Lowest performer: {least_name} only managed {least_count}/{least_goal} apps—my office plant has more follow-ups than you.\n\n"
         "Performance & tips:\n"
-        "[▉▉▉▉▁▁▁▁▁▁] 0–33%: schedule two 30-min sprints at 9 AM and 1 PM—treat it like a pop quiz you can’t skip.\n"
-        "[▉▉▉▉▉▉▉▁▁▁] 34–67%: tackle your toughest listing first thing in the morning—like ripping off a band-aid.\n"
-        "[▉▉▉▉▉▉▉▉▉▁] 67–100%: send a laser-focused follow-up to two hiring managers—quality over quantity.\n\n"
+        "[▉▉▉▉▁▁▁▁▁▁] 0–33%: Create two 30-min morning sprints—treat them like unmissable interviews.\n"
+        "[▉▉▉▉▉▉▉▁▁▁] 34–67%: Prioritize one task with the highest ROI—don’t check email first.\n"
+        "[▉▉▉▉▉▉▉▉▉▁] 67–100%: Refine your cover letter for one company—custom wins.\n\n"
         "One percent better tomorrow."
     )
 
