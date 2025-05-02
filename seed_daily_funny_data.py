@@ -26,11 +26,11 @@ except ImportError:
 railway_url = os.getenv("RAILWAY_DATABASE_URL", "").strip()
 prod_url    = os.getenv("DATABASE_URL", "").strip()
 dev_url     = os.getenv("DEV_DATABASE_URL", "").strip()
-pg_host     = os.getenv("PGHOST")
-pg_port     = os.getenv("PGPORT")
-pg_user     = os.getenv("PGUSER")
-pg_password = os.getenv("PGPASSWORD")
-pg_database = os.getenv("PGDATABASE")
+pg_host     = os.getenv("PGHOST", "localhost")
+pg_port     = os.getenv("PGPORT", "5432")
+pg_user     = os.getenv("PGUSER") or os.getenv("POSTGRES_USER")
+pg_password = os.getenv("PGPASSWORD") or os.getenv("POSTGRES_PASSWORD")
+pg_database = os.getenv("PGDATABASE") or os.getenv("POSTGRES_DB")
 
 if railway_url:
     DATABASE_URL = railway_url
