@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === Keyboards ===
-HOME_KB = ReplyKeyboardMarkup([['🏠 Home']], resize_keyboard=True)
+HOME_KB = ReplyKeyboardMarkup([['\ud83c\udfe0 Home']], resize_keyboard=True)
 
 # === Core Handlers ===
 async def wrapup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tip = ""
     if not has_goal:
-        tip = "\n\n⚠️ _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._"
+        tip = "\n\n\u26a0\ufe0f _Tip: Set your daily goal using_ `/setgoal` _to unlock full tracking._"
 
     main_kb = ReplyKeyboardMarkup([
         ['/logjobs', '/setgoal'],
@@ -80,12 +80,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ], resize_keyboard=True)
 
     await update.message.reply_text(
-        f"👋 Welcome back, {display_name}!\n\nHere’s what you can do:\n"
-        "• `/logjobs` — Log your applications\n"
-        "• `/setgoal` — Set or change your daily goal\n"
-        "• `/leaderboard` — See today’s top applicants\n"
-        "• `/progress` — See your weekly progress\n"
-        "• `/settings` — Configure name, reminders, and more" + tip,
+        f"\ud83d\udc4b Welcome back, {display_name}!\n\nHere\u2019s what you can do:\n"
+        "\u2022 `/logjobs` — Log your applications\n"
+        "\u2022 `/setgoal` — Set or change your daily goal\n"
+        "\u2022 `/leaderboard` — See today’s top applicants\n"
+        "\u2022 `/progress` — See your weekly progress\n"
+        "\u2022 `/settings` — Configure name, reminders, and more" + tip,
         reply_markup=main_kb,
         parse_mode="Markdown"
     )
@@ -93,18 +93,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "❓ *Help*\nUse /settings to view options, or tap 🏠 Home to return to main menu.",
+        "\u2753 *Help*\nUse /settings to view options, or tap \ud83c\udfe0 Home to return to main menu.",
         reply_markup=HOME_KB,
         parse_mode="Markdown"
     )
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "💬 *About This Bot*\n\n"
+        "\ud83d\udcac *About This Bot*\n\n"
         "I’m also job hunting right now, so I understand how frustrating it can feel.\n\n"
         "This bot helps us track progress and stay consistent — in a fun, supportive way.\n\n"
-        "Wishing *you* (and *me*) the best of luck! 🍀\n\n"
-        "📩 Feedback: calpal.agent@gmail.com",
+        "Wishing *you* (and *me*) the best of luck! \ud83c\udf40\n\n"
+        "\ud83d\udce9 Feedback: calpal.agent@gmail.com",
         reply_markup=HOME_KB,
         parse_mode="Markdown"
     )
@@ -113,14 +113,14 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings_kb = ReplyKeyboardMarkup([
         ['/setname', '/reminders'],
         ['/about', '/help'],
-        ['🏠 Home']
+        ['\ud83c\udfe0 Home']
     ], resize_keyboard=True)
     await update.message.reply_text(
-        "⚙️ *Settings*\n\n"
-        "• `/setname` — Change your display name\n"
-        "• `/reminders` — Toggle reminders on or off\n"
-        "• `/about` — About this bot\n"
-        "• `/help` — Show help info\n",
+        "\u2699\ufe0f *Settings*\n\n"
+        "\u2022 `/setname` — Change your display name\n"
+        "\u2022 `/reminders` — Toggle reminders on or off\n"
+        "\u2022 `/about` — About this bot\n"
+        "\u2022 `/help` — Show help info\n",
         reply_markup=settings_kb,
         parse_mode="Markdown"
     )
@@ -128,20 +128,20 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await leaderboard_actual(update, context)
     await update.message.reply_text(
-        "🏠 Tap Home to return to the main menu.",
+        "\ud83c\udfe0 Tap Home to return to the main menu.",
         reply_markup=HOME_KB
     )
 
 async def progress_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await progress(update, context)
     await update.message.reply_text(
-        "🏠 Tap Home to return to the main menu.",
+        "\ud83c\udfe0 Tap Home to return to the main menu.",
         reply_markup=HOME_KB
     )
 
 async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.callback_query.from_user.id if update.callback_query else update.effective_user.id
-    logger.info(f"🔔 toggle_reminders triggered by user {user_id!r}, callback={bool(update.callback_query)}")
+    logger.info(f"\ud83d\udd14 toggle_reminders triggered by user {user_id!r}, callback={bool(update.callback_query)}")
     if update.callback_query:
         await update.callback_query.answer()
 
@@ -160,7 +160,7 @@ async def toggle_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status = "ON" if new_state else "OFF"
     text = (
-        f"🔔 Reminders are now *{status}*. I will send you reminders at 09:00, 15:00, and 21:00 daily."
+        f"\ud83d\udd14 Reminders are now *{status}*. I will send you reminders at 09:00, 15:00, and 21:00 daily."
     )
     btn_label = "Turn OFF" if new_state else "Turn ON"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(btn_label, callback_data="toggle_reminders")]])
@@ -178,21 +178,21 @@ async def testdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "SELECT table_name FROM information_schema.tables WHERE table_schema='public';"
         )
         names = ", ".join(r['table_name'] for r in rows)
-        await update.message.reply_text(f"✅ Connected! Tables: {names}")
+        await update.message.reply_text(f"\u2705 Connected! Tables: {names}")
         await conn.close()
     except Exception as e:
         logger.error(f"/testdb error: {e}")
-        await update.message.reply_text(f"❌ Connection failed: {e}")
+        await update.message.reply_text(f"\u274c Connection failed: {e}")
 
 # === Bot Setup and Run ===
 if __name__ == "__main__":
-    logger.info("🔥 Running JobPal…")
+    logger.info("\ud83d\udd25 Running JobPal…")
     asyncio.get_event_loop().run_until_complete(init_db_pg())
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Register handlers
-    app.add_handler(MessageHandler(filters.Regex(r"^🏠 Home$"), start))
+    app.add_handler(MessageHandler(filters.Regex(r"^\ud83c\udfe0 Home$"), start))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(CommandHandler("reminders", toggle_reminders))
@@ -213,7 +213,28 @@ if __name__ == "__main__":
     app.job_queue.scheduler.configure(timezone=ZoneInfo("America/Toronto"))
     asyncio.get_event_loop().run_until_complete(register_reminders(app.job_queue))
 
-    logger.info("🤖 JobPal is live! Press Ctrl+C to stop.")
+    # === Schedule Daily Wrap-up ===
+    from db import get_user_profiles
+    from wrapup import send_wrapup
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+    async def run_daily_wrapup():
+        user_profiles = await get_user_profiles()
+        chat_ids = list(user_profiles.keys())
+        conn = await get_pg_conn()
+        rows = await conn.fetch(
+            "SELECT user_id, COALESCE(NULLIF(username, ''), first_name) AS name FROM users WHERE user_id = ANY($1::BIGINT[])",
+            chat_ids
+        )
+        await conn.close()
+        chat_names = {r["user_id"]: r["name"] for r in rows}
+        await send_wrapup(app, chat_ids, chat_names, user_profiles)
+
+    scheduler = AsyncIOScheduler(timezone=ZoneInfo("America/Toronto"))
+    scheduler.add_job(lambda: asyncio.create_task(run_daily_wrapup()), trigger="cron", hour=22, minute=0)
+    scheduler.start()
+
+    logger.info("\ud83e\udd16 JobPal is live! Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
 
     # Fake user seed

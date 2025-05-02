@@ -1,9 +1,10 @@
 import os
 import asyncio
+import random
 from datetime import date
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram.ext import Application
-from db import get_pg_conn
+from db import get_pg_conn, get_user_profiles, save_wrapup_log
 import httpx
 import logging
 
@@ -51,7 +52,7 @@ async def call_openrouter(prompt: str) -> str:
     payload = {
         "model": "gpt-3.5-turbo",
         "messages": [
-            {"role": "system", "content": "You are a cold, elite headhunter with a sharp tongue and high standards. Keep it short, human, no fluff. Each tip should sound like it came from someone who closes $300k deals before lunch."},
+            {"role": "system", "content": "You are a cold, elite headhunter with a sharp tongue and high standards. Keep it short, human, no fluff."},
             {"role": "user", "content": prompt}
         ],
         "max_tokens": 400
@@ -71,71 +72,109 @@ async def call_ollama(prompt: str) -> str:
         data = resp.json()
         return data.get('choices', [])[0].get('message', {}).get('content', '').strip()
 
-async def build_wrapup_message(top: tuple[int, int], least: tuple[int, int], chat_names: dict[int, str]) -> str:
+# --- Group Wrap-Up Message ---
+async def build_wrapup_message(top, least, chat_names, user_profiles) -> str:
     top_id, top_count = top
     least_id, least_count = least
     top_name = chat_names.get(top_id, str(top_id))
     least_name = chat_names.get(least_id, str(least_id))
-    top_goal, least_goal = 10, 10
+    top_goal = user_profiles.get(top_id, {}).get("goal", 10)
+    least_goal = user_profiles.get(least_id, {}).get("goal", 10)
+    top_trait = user_profiles.get(top_id, {}).get("trait", "focused")
+    least_trait = user_profiles.get(least_id, {}).get("trait", "casual")
 
-    prompt = f"""Generate a short, 7-line leaderboard wrap-up:
-1. Start with 'Ladies and gentlemen,'
-2. Celebrate top performer: {top_name} nailed {top_count}/{top_goal}. Give a confident, witty compliment.
-3. Roast lowest performer: {least_name} did {least_count}/{least_goal}. Give a tough-love, clever jab.
-4. Create one unique pro tip for users in 0–33% performance.
-5. Create a different, non-repetitive pro tip for 34–67%.
-6. Create a sharp elite-level pro tip for 67–100% users.
-7. End with: 'One percent better tomorrow.'"""
+    prompt = f"""Generate a short, 7-line daily leaderboard wrap-up.
+Tone: cold, direct, tactical. No fluff. Tips should be concrete and realistic.
 
-    gif_url = await get_cat_gif_url()
+1. Start with: 'Ladies and gentlemen,'
+2. Celebrate top performer: {top_name} nailed {top_count}/{top_goal}. Trait: {top_trait}. Compliment them.
+3. Roast lowest performer: {least_name} did {least_count}/{least_goal}. Trait: {least_trait}. Light roast, keep it clever.
+4. For users who completed 0–33%: give 1 clear, tactical job search tip (e.g., when and how to apply).
+5. For users at 34–67%: give 1 time-management or focus-related tip they can act on immediately.
+6. For users at 67–100%: give 1 advanced strategy (e.g., networking, tailoring applications) to improve quality.
+7. End with: 'One percent better tomorrow.'
+"""
 
-    if OPENROUTER_KEY:
-        try:
+    try:
+        if OPENROUTER_KEY:
             logger.info("Trying OpenRouter for wrapup message...")
-            llm_msg = await call_openrouter(prompt)
-            return f"{llm_msg}"
-        except Exception as e:
-            logger.error(f"OpenRouter error: {e}")
-
-    if OLLAMA_MODEL:
-        try:
+            return await call_openrouter(prompt)
+        elif OLLAMA_MODEL:
             logger.info("Trying Ollama for wrapup message...")
-            llm_msg = await call_ollama(prompt)
-            return f"{llm_msg}"
-        except Exception as e:
-            logger.error(f"Ollama error: {e}")
+            return await call_ollama(prompt)
+    except Exception as e:
+        logger.error(f"LLM error: {e}")
 
-    logger.info("Using static fallback for wrapup message.")
     return (
         f"Ladies and gentlemen,\n"
-        f"Top performer: {top_name} nailed {top_count}/{top_goal} applications (you’re single-handedly keeping recruiters in business).\n"
-        f"Lowest performer: {least_name} only managed {least_count}/{least_goal} apps—my office plant has more follow-ups than you.\n\n"
-        "Performance & tips:\n"
-        "[▉▉▉▉▁▁▁▁▁▁] 0–33%: Create two 30-min morning sprints—treat them like unmissable interviews.\n"
-        "[▉▉▉▉▉▉▉▁▁▁] 34–67%: Prioritize one task with the highest ROI—don’t check email first.\n"
-        "[▉▉▉▉▉▉▉▉▉▁] 67–100%: Refine your cover letter for one company—custom wins.\n\n"
+        f"{top_name} crushed it with {top_count}/{top_goal}. You’re a beast.\n"
+        f"{least_name} logged {least_count}/{least_goal}. Even your inbox feels sorry.\n"
+        "\ud83d\udd34 0–33%: Apply before 11AM and avoid multitasking. Use a timer.\n"
+        "\ud83d\udd36 34–67%: Write down tomorrow’s goal before bed. Prime your brain.\n"
+        "\ud83d\udd35 67–100%: Message one hiring manager today with a tailored note.\n"
         "One percent better tomorrow."
     )
 
-async def send_wrapup(application: Application, chat_ids: list[int], chat_names: dict[int, str]):
+# --- Main Scheduler Function ---
+async def send_wrapup(application: Application, chat_ids: list[int], chat_names: dict[int, str], user_profiles: dict[int, dict]):
     top, least = await fetch_leaderboard_positions()
-    text = await build_wrapup_message(top, least, chat_names)
+    group_msg = await build_wrapup_message(top, least, chat_names, user_profiles)
     gif_url = await get_cat_gif_url()
+
+    # Group leaderboard wrap-up
     for chat_id in chat_ids:
-        await application.bot.send_message(chat_id=chat_id, text=text)
+        await application.bot.send_message(chat_id=chat_id, text=group_msg)
         await application.bot.send_animation(chat_id=chat_id, animation=gif_url)
 
-def schedule_daily_wrapup(app: Application, chat_ids: list[int], chat_names: dict[int, str]):
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        lambda: asyncio.create_task(send_wrapup(app, chat_ids, chat_names)),
-        trigger="cron", hour=22, minute=0, timezone="America/Toronto"
-    )
-    scheduler.start()
+    await save_wrapup_log(group_msg, date.today(), user_id=None)
 
+    # Personalized nudges
+    for chat_id in chat_ids:
+        profile = user_profiles.get(chat_id, {})
+        name = chat_names.get(chat_id, str(chat_id))
+        done = profile.get("done", 0)
+        goal = profile.get("goal", 10)
+        streak = profile.get("streak", 0)
+        trait = profile.get("trait", "ambiguous mystery")
+        percent = int((done / goal) * 100) if goal else 0
+
+        prompt = f"""Create a 4-line cold motivational message for a job seeker:
+Name: {name}
+Done: {done}/{goal} ({percent}%)
+Streak: {streak} days
+Personality: {trait}
+
+Tone: cold, elite coach. Include one sharp tip. End with 'One percent better tomorrow.'
+"""
+
+        try:
+            message = await call_openrouter(prompt)
+        except Exception as e:
+            logger.warning(f"Fallback message for {name} due to LLM error: {e}")
+            message = f"{name}, you did {done}/{goal}. Get back in gear tomorrow.\nOne percent better tomorrow."
+
+        gif = await get_cat_gif_url()
+        await application.bot.send_message(chat_id=chat_id, text=message)
+        await application.bot.send_animation(chat_id=chat_id, animation=gif)
+
+        await save_wrapup_log(message, date.today(), user_id=chat_id)
+
+# Optional: test manually
 if __name__ == "__main__":
-    sample_top = (12345, 9)
-    sample_least = (67890, 2)
-    sample_names = {12345: "Alice", 67890: "Bob"}
-    message = asyncio.run(build_wrapup_message(sample_top, sample_least, sample_names))
-    print(message)
+    from telegram.ext import ApplicationBuilder
+    from config import TELEGRAM_BOT_TOKEN
+
+    async def run():
+        app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+        user_profiles = await get_user_profiles()
+        chat_ids = list(user_profiles.keys())
+        conn = await get_pg_conn()
+        rows = await conn.fetch(
+            "SELECT user_id, COALESCE(NULLIF(username, ''), first_name) AS name FROM users WHERE user_id = ANY($1::BIGINT[])",
+            chat_ids
+        )
+        await conn.close()
+        chat_names = {r["user_id"]: r["name"] for r in rows}
+        await send_wrapup(app, chat_ids, chat_names, user_profiles)
+
+    asyncio.run(run())
