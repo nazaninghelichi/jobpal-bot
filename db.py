@@ -45,7 +45,7 @@ get_db_connection = get_pg_conn
 
 async def init_db_pg():
     """
-    Initialize the Postgres schema: users, daily_track, and user_preferences tables.
+    Initialize the Postgres schema: users, daily_track, user_preferences, and wrapup_logs tables.
     """
     conn = await get_pg_conn()
 
@@ -83,4 +83,69 @@ async def init_db_pg():
         """
     )
 
+    # Create wrapup_logs table
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wrapup_logs (
+          id         SERIAL PRIMARY KEY,
+          date       DATE NOT NULL,
+          user_id    BIGINT,
+          content    TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+
     await conn.close()
+
+async def save_wrapup_log(content: str, date_, user_id=None):
+    conn = await get_pg_conn()
+    await conn.execute(
+        """
+        INSERT INTO wrapup_logs (date, user_id, content)
+        VALUES ($1, $2, $3)
+        """,
+        date_, user_id, content
+    )
+    await conn.close()
+
+from datetime import date, timedelta
+
+async def get_user_profiles() -> dict[int, dict]:
+    conn = await get_pg_conn()
+    today = date.today()
+    user_profiles = {}
+
+    rows = await conn.fetch(
+        "SELECT user_id, goal, done FROM daily_track WHERE date = $1",
+        today.isoformat()
+    )
+
+    for row in rows:
+        user_id = row["user_id"]
+        goal = row["goal"]
+        done = row["done"]
+
+        streak = 0
+        for offset in range(1, 8):
+            d = today - timedelta(days=offset)
+            record = await conn.fetchrow(
+                "SELECT done FROM daily_track WHERE user_id = $1 AND date = $2",
+                user_id, d.isoformat()
+            )
+            if record and record["done"] > 0:
+                streak += 1
+            else:
+                break
+
+        trait = "focused finisher" if done == goal else "resilient grinder" if done > 0 else "chill dreamer"
+
+        user_profiles[user_id] = {
+            "goal": goal,
+            "done": done,
+            "streak": streak,
+            "trait": trait
+        }
+
+    await conn.close()
+    return user_profiles
