@@ -51,6 +51,8 @@ import asyncio
 import random
 from datetime import date
 from db import get_pg_conn, init_db_pg
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from zoneinfo import ZoneInfo
 
 # --- Seeder config ---
 GOAL_MIN = 5
@@ -105,4 +107,9 @@ async def seed_funny_data():
     print(f"✅ Seeded {len(USER_PROFILES)} users. Goals ranged {GOAL_MIN}–{GOAL_MAX}.")
 
 if __name__ == "__main__":
-    asyncio.run(seed_funny_data())
+    scheduler = AsyncIOScheduler(timezone=ZoneInfo("America/Toronto"))
+    scheduler.add_job(lambda: asyncio.create_task(seed_funny_data()), trigger="cron", hour=1, minute=30)
+    scheduler.start()
+
+    print("⏰ Seeder scheduled for 1:30 AM daily (Toronto time)...")
+    asyncio.get_event_loop().run_forever()
